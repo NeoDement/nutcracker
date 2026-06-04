@@ -101,7 +101,12 @@ def realize_refs(srefs, hrefs, seq):
         for ref, nref in pairwise(refs):
             label = f'[{ref + 8:08d}]' if refs[ref] else f'_[{ref + 8:08d}]'
             stats = deque(stat for off, stat in seq if off < nref)
-            # TODO: investigate what is the meaning of empty ref block
+            # An empty ref block is a jump/branch target whose target instruction
+            # was folded by windex into a higher-level statement (a stack op like
+            # o6_pop, or operands absorbed into a wait/expression), so no standalone
+            # statement exists at that offset. Such a target has no label here; the
+            # decompiler resolves it downstream (the off-by-one ref renders against
+            # the next real statement's label).
             if stats:
                 yield label, stats
             seq = deque((off, stat) for off, stat in seq if off >= nref)

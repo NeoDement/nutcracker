@@ -2,6 +2,7 @@ import functools
 import io
 import operator
 import os
+import re
 from collections import OrderedDict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -5686,6 +5687,17 @@ def transform_asts(indent, asts, transform=True):
             if label in deps:
                 keys = set(deps) - deref
                 skip_deref = False
+                # Protect a label still referenced by an inline RefOffset operand
+                # that survives only as text in an emitted statement (e.g. the
+                # back-edge of a `wait-for-* N [ref &[X]]` self-loop). Such refs are
+                # plain strings, not Jump objects, so the checks below miss them;
+                # without this guard the label is renamed to soft and merged away,
+                # leaving the inline &[X] dangling.
+                marker = f'&{label}'
+                for _block in asts.values():
+                    if any(isinstance(_st, str) and marker in _st for _st in _block):
+                        skip_deref = True
+                        break
                 for ex in deps[label]:
                     if isinstance(ex, (ConditionalJump, UnconditionalJump)):
                         if adr(ex.ref) == f'&{label}':
@@ -5725,12 +5737,38 @@ def transform_asts(indent, asts, transform=True):
     return asts
 
 
+_REF_RE = re.compile(r'&\[(\d{8})\]')
+_LABEL_RE = re.compile(r'\[(\d{8})\]')
+
+
+def _redirect_off_by_one(line, defs):
+    # windex folds the final `if !(…) jump` of a branch chain onto the instruction
+    # one byte before the merge (a folded o6_pop), so the ref lands at an offset with
+    # no label while the merge label sits at offset+1. Redirect such a ref onto the
+    # merge label so the jump resolves instead of dangling. Tightly gated: only fires
+    # when the target has no def but def+1 exists.
+    def repl(m):
+        off = int(m.group(1))
+        if off not in defs and (off + 1) in defs:
+            return f'&[{off + 1:08d}]'
+        return m.group(0)
+
+    return _REF_RE.sub(repl, line)
+
+
 def print_asts(indent, asts):
+    defs = {
+        int(m.group(1))
+        for label in asts
+        if not label.startswith('_')
+        for m in [_LABEL_RE.search(label)]
+        if m
+    }
     for label, seq in asts.items():
         if not label.startswith('_'):  # or True:
             yield f'{label}:'
         for st in seq:
-            yield f'{indent}{st}'
+            yield _redirect_off_by_one(f'{indent}{st}', defs)
 
 
 def print_locals(indent):
