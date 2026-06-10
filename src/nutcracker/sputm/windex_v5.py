@@ -1428,7 +1428,10 @@ def get_elem_info(elem):
             bytes(sputm.find('OBNA', obcd).data).split(b'\0', maxsplit=1)[0]
         )
         pref = list(parse_verb_meta(pref))
-        entries = {off: idx[0] for idx, off in pref}
+        entries_dict = defaultdict(list)
+        for idx, off in pref:
+            entries_dict[off].append(idx[0])
+        entries = dict(entries_dict)
     else:
         scr_id = (
             int.from_bytes(pref, byteorder='little', signed=False) if pref else None
@@ -1479,7 +1482,8 @@ def decompile_script(elem, transform=True):
                 yield '\t}'
                 l_vars.clear()
             yield ''  # new line
-            yield f'\tverb {semantic_key(entries[off + 8], sem="verb")} {{'
+            verbs = ' '.join(semantic_key(v, sem="verb") for v in entries[off + 8])
+            yield f'\tverb {verbs} {{'
             indent = 2 * '\t'
         if isinstance(res, ConditionalJump) or isinstance(res, UnconditionalJump):
             srefs.add(off)
