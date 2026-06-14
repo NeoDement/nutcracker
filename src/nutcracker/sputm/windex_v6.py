@@ -75,15 +75,7 @@ class KeyString:
 
 
 class Variable:
-    names = {
-        3: 's_overrideHit',
-        9: 's_selectedActor',
-        221: 's_debugMode',
-        211: 'g_foo',
-        # g_helogoRunning
-        # g_lastRoom
-        # g_staticCostume
-    }
+    names = {}
 
     def __init__(self, orig):
         self.orig = orig
